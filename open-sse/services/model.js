@@ -51,6 +51,8 @@ const ALIAS_TO_PROVIDER_ID = {
   vertex: "vertex",
   vxp: "vertex-partner",
   "vertex-partner": "vertex-partner",
+  vxa: "vertex-adc",
+  "vertex-adc": "vertex-adc",
 };
 
 /**

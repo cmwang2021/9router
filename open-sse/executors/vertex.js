@@ -1,6 +1,6 @@
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
-import { parseVertexSaJson, refreshVertexToken } from "../services/tokenRefresh.js";
+import { parseVertexSaJson, refreshVertexToken, refreshVertexAdcToken } from "../services/tokenRefresh.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 
 // Cache project IDs resolved from raw API keys { apiKey → projectId }
@@ -32,8 +32,12 @@ async function resolveProjectId(apiKey) {
  * "vertex"         → Gemini models via regional/global Vertex endpoint
  * "vertex-partner" → Partner models (Llama, Mistral, GLM, DeepSeek, Qwen)
  *                    via global OpenAI-compatible endpoint
+ * "vertex-adc"     → Gemini models via GCE Metadata Server ADC
+ *                    For GCP VMs with bound service accounts.
+ *                    projectId + location from providerSpecificData.
  *
  * Auth: SA JSON (stored as apiKey) → JWT assertion → Bearer token (via jose)
+ *       ADC (vertex-adc)           → GCE Metadata Server → Bearer token
  * Token is minted/cached in tokenRefresh.js, not here.
  */
 export class VertexExecutor extends BaseExecutor {
@@ -45,6 +49,17 @@ export class VertexExecutor extends BaseExecutor {
     const saJson = parseVertexSaJson(credentials?.apiKey);
     const rawKey = !saJson ? credentials?.apiKey : null;
     const projectId = saJson?.project_id || credentials?.providerSpecificData?.projectId;
+
+    // vertex-adc: always use project-scoped regional endpoint
+    if (this.provider === "vertex-adc") {
+      const adcProjectId = credentials?.providerSpecificData?.projectId;
+      const adcLocation = credentials?.providerSpecificData?.location || "us-central1";
+      if (!adcProjectId) throw new Error("Vertex ADC requires projectId in providerSpecificData.");
+      const action = stream ? "streamGenerateContent" : "generateContent";
+      let url = `https://${adcLocation}-aiplatform.googleapis.com/v1/projects/${adcProjectId}/locations/${adcLocation}/publishers/google/models/${model}:${action}`;
+      if (stream) url += "?alt=sse";
+      return url;
+    }
 
     if (this.provider === "vertex-partner") {
       // Partner models require project_id in path regardless of auth method
@@ -75,7 +90,7 @@ export class VertexExecutor extends BaseExecutor {
   buildHeaders(credentials, stream = true) {
     const headers = { "Content-Type": "application/json" };
 
-    // Only set Bearer token if using SA JSON flow (raw key goes in URL ?key=)
+    // Only set Bearer token if using SA JSON flow or ADC (raw key goes in URL ?key=)
     if (credentials.accessToken) {
       headers["Authorization"] = `Bearer ${credentials.accessToken}`;
     }
@@ -86,6 +101,13 @@ export class VertexExecutor extends BaseExecutor {
   }
 
   async refreshCredentials(credentials, log) {
+    // vertex-adc: refresh via GCE Metadata Server
+    if (this.provider === "vertex-adc") {
+      const result = await refreshVertexAdcToken(log);
+      if (!result) return null;
+      return { accessToken: result.accessToken, expiresAt: result.expiresAt };
+    }
+
     const saJson = parseVertexSaJson(credentials?.apiKey);
     if (!saJson) return null;
 
@@ -96,21 +118,28 @@ export class VertexExecutor extends BaseExecutor {
   }
 
   async execute({ model, body, stream, credentials, signal, log, proxyOptions = null }) {
-    const saJson = parseVertexSaJson(credentials?.apiKey);
-
-    // SA JSON flow: mint Bearer token (cached)
-    if (saJson) {
-      const result = await refreshVertexToken(saJson, log);
-      if (!result?.accessToken) throw new Error("Vertex: failed to mint access token from Service Account JSON");
+    // vertex-adc: fetch token from GCE Metadata Server
+    if (this.provider === "vertex-adc") {
+      const result = await refreshVertexAdcToken(log);
+      if (!result?.accessToken) throw new Error("Vertex ADC: failed to obtain token from GCE Metadata Server");
       credentials.accessToken = result.accessToken;
-    }
+    } else {
+      const saJson = parseVertexSaJson(credentials?.apiKey);
 
-    // vertex-partner with raw key: auto-resolve project_id if not provided
-    if (this.provider === "vertex-partner" && !saJson && !credentials?.providerSpecificData?.projectId) {
-      const projectId = await resolveProjectId(credentials.apiKey);
-      if (!projectId) throw new Error("Vertex: could not resolve project_id from API key. Please add it manually in provider settings.");
-      log?.debug?.("VERTEX", `Resolved project_id: ${projectId}`);
-      credentials.providerSpecificData = { ...credentials.providerSpecificData, projectId };
+      // SA JSON flow: mint Bearer token (cached)
+      if (saJson) {
+        const result = await refreshVertexToken(saJson, log);
+        if (!result?.accessToken) throw new Error("Vertex: failed to mint access token from Service Account JSON");
+        credentials.accessToken = result.accessToken;
+      }
+
+      // vertex-partner with raw key: auto-resolve project_id if not provided
+      if (this.provider === "vertex-partner" && !saJson && !credentials?.providerSpecificData?.projectId) {
+        const projectId = await resolveProjectId(credentials.apiKey);
+        if (!projectId) throw new Error("Vertex: could not resolve project_id from API key. Please add it manually in provider settings.");
+        log?.debug?.("VERTEX", `Resolved project_id: ${projectId}`);
+        credentials.providerSpecificData = { ...credentials.providerSpecificData, projectId };
+      }
     }
 
     const url = this.buildUrl(model, stream, 0, credentials);

@@ -317,6 +317,13 @@ export const PROVIDERS = {
     baseUrl: "https://aiplatform.googleapis.com",
     format: "openai"
   },
+  // Vertex AI - ADC (Application Default Credentials) via GCE Metadata Server
+  // For GCP VMs with bound service accounts. No SA JSON needed.
+  // projectId and location are read from providerSpecificData on the connection.
+  "vertex-adc": {
+    baseUrl: "https://aiplatform.googleapis.com",
+    format: "vertex"
+  },
   // GitLab Duo - OpenAI-compatible chat endpoint
   gitlab: {
     baseUrl: "https://gitlab.com/api/v4/chat/completions",
