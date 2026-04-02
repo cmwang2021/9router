@@ -50,13 +50,17 @@ export class VertexExecutor extends BaseExecutor {
     const rawKey = !saJson ? credentials?.apiKey : null;
     const projectId = saJson?.project_id || credentials?.providerSpecificData?.projectId;
 
-    // vertex-adc: always use project-scoped regional endpoint
+    // vertex-adc: use global endpoint for Preview models, regional for GA
     if (this.provider === "vertex-adc") {
       const adcProjectId = credentials?.providerSpecificData?.projectId;
       const adcLocation = credentials?.providerSpecificData?.location || "us-central1";
       if (!adcProjectId) throw new Error("Vertex ADC requires projectId in providerSpecificData.");
       const action = stream ? "streamGenerateContent" : "generateContent";
-      let url = `https://${adcLocation}-aiplatform.googleapis.com/v1/projects/${adcProjectId}/locations/${adcLocation}/publishers/google/models/${model}:${action}`;
+      // Preview models use global endpoint; GA models use regional
+      const isPreview = model.includes("preview");
+      const host = isPreview ? "aiplatform.googleapis.com" : `${adcLocation}-aiplatform.googleapis.com`;
+      const loc = isPreview ? "global" : adcLocation;
+      let url = `https://${host}/v1/projects/${adcProjectId}/locations/${loc}/publishers/google/models/${model}:${action}`;
       if (stream) url += "?alt=sse";
       return url;
     }
@@ -73,8 +77,12 @@ export class VertexExecutor extends BaseExecutor {
 
     if (saJson) {
       // SA JSON + Bearer token: must use project-scoped path to avoid RESOURCE_PROJECT_INVALID
+      // Preview models use global endpoint; GA models use regional
       const location = credentials?.providerSpecificData?.location || "us-central1";
-      let url = `https://aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${model}:${action}`;
+      const isPreview = model.includes("preview");
+      const host = isPreview ? "aiplatform.googleapis.com" : `${location}-aiplatform.googleapis.com`;
+      const loc = isPreview ? "global" : location;
+      let url = `https://${host}/v1/projects/${projectId}/locations/${loc}/publishers/google/models/${model}:${action}`;
       if (stream) url += "?alt=sse";
       return url;
     }
