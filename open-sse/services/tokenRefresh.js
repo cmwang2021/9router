@@ -508,6 +508,9 @@ export async function getAccessToken(provider, credentials, log) {
       return await refreshVertexToken(saJson, log);
     }
 
+    case "vertex-adc":
+      return await refreshVertexAdcToken(log);
+
     default:
       log?.warn?.("TOKEN_REFRESH", `Unsupported provider for token refresh: ${provider}`);
       return null;
@@ -551,6 +554,8 @@ export async function refreshTokenByProvider(provider, credentials, log) {
       if (!saJson) return null;
       return refreshVertexToken(saJson, log);
     }
+    case "vertex-adc":
+      return refreshVertexAdcToken(log);
     default:
       return refreshAccessToken(provider, credentials.refreshToken, credentials, log);
   }
@@ -701,6 +706,47 @@ export async function refreshVertexToken(saJson, log) {
     return { accessToken: access_token, expiresAt };
   } catch (error) {
     log?.error?.("TOKEN_REFRESH", `Vertex token error: ${error.message}`);
+    return null;
+  }
+}
+
+// Cache GCE Metadata ADC token { token, expiresAt }
+let vertexAdcTokenCache = null;
+
+/**
+ * Fetch an OAuth2 Bearer token from the GCE Metadata Server.
+ * For GCP VMs with a bound service account (ADC).
+ * Token is cached until 5 minutes before expiry.
+ */
+export async function refreshVertexAdcToken(log) {
+  // Return cached token if still valid (5-min buffer)
+  if (vertexAdcTokenCache && vertexAdcTokenCache.expiresAt - Date.now() > 5 * 60 * 1000) {
+    log?.debug?.("TOKEN_REFRESH", "Vertex ADC: using cached metadata token");
+    return { accessToken: vertexAdcTokenCache.token, expiresAt: vertexAdcTokenCache.expiresAt };
+  }
+
+  try {
+    log?.info?.("TOKEN_REFRESH", "Vertex ADC: fetching token from GCE Metadata Server");
+    const res = await fetch(
+      "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token",
+      { headers: { "Metadata-Flavor": "Google" } }
+    );
+
+    if (!res.ok) {
+      const err = await res.text();
+      log?.error?.("TOKEN_REFRESH", `Vertex ADC metadata fetch failed (${res.status}): ${err}`);
+      return null;
+    }
+
+    const data = await res.json();
+    const expiresAt = Date.now() + (data.expires_in ?? 3600) * 1000;
+
+    vertexAdcTokenCache = { token: data.access_token, expiresAt };
+    log?.info?.("TOKEN_REFRESH", `Vertex ADC: token obtained, expires in ${data.expires_in}s`);
+
+    return { accessToken: data.access_token, expiresAt };
+  } catch (error) {
+    log?.error?.("TOKEN_REFRESH", `Vertex ADC metadata error: ${error.message}`);
     return null;
   }
 }

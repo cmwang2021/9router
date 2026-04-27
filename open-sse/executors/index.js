@@ -19,6 +19,7 @@ const executors = {
   cu: new CursorExecutor(), // Alias for cursor
   vertex: new VertexExecutor("vertex"),
   "vertex-partner": new VertexExecutor("vertex-partner"),
+  "vertex-adc": new VertexExecutor("vertex-adc"),
 };
 
 const defaultCache = new Map();

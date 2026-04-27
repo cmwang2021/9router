@@ -16,6 +16,7 @@ export const FREE_TIER_PROVIDERS = {
   nvidia: { id: "nvidia", alias: "nvidia", name: "NVIDIA NIM", icon: "developer_board", color: "#76B900", textIcon: "NV", website: "https://developer.nvidia.com/nim", notice: { text: "Free access for NVIDIA Developer Program members (prototyping & testing).", apiKeyUrl: "https://build.nvidia.com/settings/api-keys" } },
   ollama: { id: "ollama", alias: "ollama", name: "Ollama Cloud", icon: "cloud", color: "#ffffffff", textIcon: "OL", website: "https://ollama.com", notice: { text: "Free tier: light usage, 1 cloud model at a time (limits reset every 5h & 7d). Pro $20/mo · Max $100/mo.", apiKeyUrl: "https://ollama.com/settings/api-keys" } },
   vertex: { id: "vertex", alias: "vx", name: "Vertex AI", icon: "cloud", color: "#4285F4", textIcon: "VX", website: "https://cloud.google.com/vertex-ai", notice: { text: "New Google Cloud accounts get $300 free credits. Requires GCP project + Service Account with Vertex AI API enabled.", apiKeyUrl: "https://console.cloud.google.com/iam-admin/serviceaccounts" } },
+  "vertex-adc": { id: "vertex-adc", alias: "vxa", name: "Vertex ADC", icon: "cloud", color: "#4285F4", textIcon: "VA", website: "https://cloud.google.com/vertex-ai", notice: { text: "For GCP VMs with bound service accounts. No API key needed — uses GCE Metadata Server for auto-authentication. Set projectId and location in provider settings." } },
 };
 
 // OAuth Providers

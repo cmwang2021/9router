@@ -350,13 +350,28 @@ export const PROVIDER_MODELS = {
     { id: "gemini-3.1-pro-preview", name: "Gemini 3.1 Pro Preview" },
     { id: "gemini-3.1-flash-lite-preview", name: "Gemini 3.1 Flash Lite Preview" },
     { id: "gemini-3-flash-preview", name: "Gemini 3 Flash Preview" },
+    { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro" },
     { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash" },
+    { id: "gemini-2.5-flash-lite", name: "Gemini 2.5 Flash Lite" },
+    { id: "gemini-2.5-flash-image", name: "Gemini 2.5 Flash Image" },
   ],
   "vertex-partner": [
     { id: "deepseek-ai/deepseek-v3.2-maas", name: "DeepSeek V3.2 (Vertex)" },
     { id: "qwen/qwen3-next-80b-a3b-thinking-maas", name: "Qwen3 Next 80B Thinking (Vertex)" },
     { id: "qwen/qwen3-next-80b-a3b-instruct-maas", name: "Qwen3 Next 80B Instruct (Vertex)" },
     { id: "zai-org/glm-5-maas", name: "GLM-5 (Vertex)" },
+  ],
+  // Vertex AI ADC - GCE Metadata Server auth (all probe-tested models)
+  "vertex-adc": [
+    // Preview models (global endpoint)
+    { id: "gemini-3.1-pro-preview", name: "Gemini 3.1 Pro Preview (ADC)" },
+    { id: "gemini-3.1-flash-lite-preview", name: "Gemini 3.1 Flash Lite Preview (ADC)" },
+    { id: "gemini-3-flash-preview", name: "Gemini 3 Flash Preview (ADC)" },
+    // GA models (regional endpoint)
+    { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro (ADC)" },
+    { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash (ADC)" },
+    { id: "gemini-2.5-flash-lite", name: "Gemini 2.5 Flash Lite (ADC)" },
+    { id: "gemini-2.5-flash-image", name: "Gemini 2.5 Flash Image (ADC)" },
   ],
 };
 
@@ -407,6 +422,7 @@ const OAUTH_ALIASES = {
   cline: "cl",
   vertex: "vertex",
   "vertex-partner": "vertex-partner",
+  "vertex-adc": "vertex-adc",
 };
 
 // Derived from PROVIDERS — no need to maintain manually
