@@ -13,6 +13,9 @@ const ALIAS_TO_PROVIDER_ID = {
   kmc: "kimi-coding",
   cl: "cline",
   oc: "opencode",
+  ocg: "opencode-go",
+  // TTS providers
+  el: "elevenlabs",
   // API Key providers
   openai: "openai",
   anthropic: "anthropic",
@@ -46,6 +49,10 @@ const ALIAS_TO_PROVIDER_ID = {
   nanobanana: "nanobanana",
   ch: "chutes",
   chutes: "chutes",
+  ark: "volcengine-ark",
+  "volcengine-ark": "volcengine-ark",
+  byteplus: "byteplus",
+  bpm: "byteplus",
   cursor: "cursor",
   vx: "vertex",
   vertex: "vertex",
@@ -53,6 +60,11 @@ const ALIAS_TO_PROVIDER_ID = {
   "vertex-partner": "vertex-partner",
   vxa: "vertex-adc",
   "vertex-adc": "vertex-adc",
+  // Web cookie providers
+  gw: "grok-web",
+  "grok-web": "grok-web",
+  pw: "perplexity-web",
+  "perplexity-web": "perplexity-web",
 };
 
 /**
