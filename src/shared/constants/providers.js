@@ -213,3 +213,11 @@ export const USAGE_SUPPORTED_PROVIDERS = [
   "kimi-coding",
   "ollama",
 ];
+
+// Subset that uses apikey auth (still surfaced on quota page)
+export const USAGE_APIKEY_PROVIDERS = [
+  "glm",
+  "glm-cn",
+  "minimax",
+  "minimax-cn",
+];
