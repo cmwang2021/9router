@@ -12,6 +12,8 @@ const IS_WINDOWS = os.platform() === "win32";
 const BIN_NAME = IS_WINDOWS ? `${BINARY_NAME}.exe` : BINARY_NAME;
 const BIN_PATH = path.join(BIN_DIR, BIN_NAME);
 const POWERSHELL_HIDDEN_COMMAND = "powershell -NoProfile -NonInteractive -WindowStyle Hidden -Command";
+const DEFAULT_QUICK_TUNNEL_PROTOCOL = "http2";
+const QUICK_TUNNEL_PROTOCOLS = new Set(["http2", "quic", "auto"]);
 
 const GITHUB_BASE_URL = "https://github.com/cloudflare/cloudflared/releases/latest/download";
 
@@ -195,6 +197,7 @@ export async function spawnCloudflared(tunnelToken) {
   const child = spawn(binaryPath, ["tunnel", "run", "--dns-resolver-addrs", "1.1.1.1:53", "--token", tunnelToken], {
     detached: false,
     windowsHide: true,
+    cwd: os.tmpdir(),
     stdio: ["ignore", "pipe", "pipe"]
   });
 
@@ -234,22 +237,31 @@ export async function spawnCloudflared(tunnelToken) {
       }
     });
 
-    child.on("exit", (code) => {
+    child.on("exit", (code, signal) => {
       cloudflaredProcess = null;
       clearPid();
       const wasConnected = resolved; // true = already connected successfully
       if (!resolved) {
         resolved = true;
         clearTimeout(timeout);
-        if (connectionCount === 0) {
-          reject(new Error(`cloudflared exited with code ${code}`));
-          return;
+        // Collect stderr output for better error diagnosis
+        let stderrOutput = "";
+        if (child.stderr && !child.stderr.destroyed) {
+          // Try to read any buffered stderr (may not have all output but helps with common errors)
+          stderrOutput = " Check cloudflared logs for details.";
         }
+        if (code === 1) {
+          // Common exit code 1 issues: invalid token, auth failure, network issues
+          reject(new Error(`cloudflared exited with code ${code}${stderrOutput} Ensure your tunnel token is valid and network is reachable.`));
+        } else if (code === 2) {
+          reject(new Error(`cloudflared exited with code ${code}${stderrOutput} Check if required arguments are correct.`));
+        } else {
+          reject(new Error(`cloudflared exited with code ${code}${stderrOutput}`));
+        }
+        return;
       }
-      // Only notify on unexpected exit AFTER successful connection
-      if (wasConnected && unexpectedExitHandler) {
-        unexpectedExitHandler();
-      }
+      // Watchdog (initializeApp) handles recovery — no auto-reconnect here
+      if (wasConnected && unexpectedExitHandler) unexpectedExitHandler();
     });
   });
 }
@@ -275,10 +287,17 @@ export async function spawnQuickTunnel(localPort, onUrlUpdate) {
     } catch (e) { /* ignore */ }
   };
 
-  const child = spawn(binaryPath, ["tunnel", "--url", `http://localhost:${localPort}`, "--config", configPath, "--no-autoupdate"], {
+  const requestedProtocol = String(process.env.TUNNEL_TRANSPORT_PROTOCOL || process.env.CLOUDFLARED_PROTOCOL || DEFAULT_QUICK_TUNNEL_PROTOCOL).trim().toLowerCase();
+  const tunnelProtocol = QUICK_TUNNEL_PROTOCOLS.has(requestedProtocol) ? requestedProtocol : DEFAULT_QUICK_TUNNEL_PROTOCOL;
+  const child = spawn(binaryPath, ["tunnel", "--url", `http://127.0.0.1:${localPort}`, "--config", configPath, "--no-autoupdate"], {
     detached: false,
     windowsHide: true,
-    stdio: ["ignore", "pipe", "pipe"]
+    cwd: os.tmpdir(),
+    env: {
+      ...process.env,
+      TUNNEL_TRANSPORT_PROTOCOL: tunnelProtocol,
+    },
+    stdio: ["ignore", "pipe", "pipe"],
   });
 
   cloudflaredProcess = child;
@@ -323,12 +342,14 @@ export async function spawnQuickTunnel(localPort, onUrlUpdate) {
         lastUrl = tunnelUrl;
         clearTimeout(timeout);
         cleanup();
+        console.log(`[Tunnel] cloudflared URL: ${tunnelUrl}`);
         resolve({ child, tunnelUrl });
         return;
       }
 
       // URL changed after initial connect — notify caller to re-register
       if (tunnelUrl !== lastUrl) {
+        console.log(`[Tunnel] cloudflared URL changed: ${tunnelUrl}`);
         lastUrl = tunnelUrl;
         if (onUrlUpdate) onUrlUpdate(tunnelUrl);
       }
@@ -345,14 +366,22 @@ export async function spawnQuickTunnel(localPort, onUrlUpdate) {
       reject(err);
     });
 
-    child.on("exit", (code) => {
+    child.on("exit", (code, signal) => {
       cloudflaredProcess = null;
       clearPid();
+      console.log(`[Tunnel] cloudflared exit code=${code} signal=${signal}`);
       if (!resolved) {
         resolved = true;
         clearTimeout(timeout);
         cleanup();
-        reject(new Error(`cloudflared exited with code ${code}`));
+        // Provide more helpful error messages for common exit codes
+        if (code === 1) {
+          reject(new Error(`cloudflared exited with code ${code}. This often means: (1) the tunnel token is invalid or expired, (2) network connectivity issues, or (3) cloudflared cannot reach the local server.`));
+        } else if (code === 2) {
+          reject(new Error(`cloudflared exited with code ${code}. Check that arguments are correct.`));
+        } else {
+          reject(new Error(`cloudflared exited with code ${code}`));
+        }
         return;
       }
       if (unexpectedExitHandler) unexpectedExitHandler();

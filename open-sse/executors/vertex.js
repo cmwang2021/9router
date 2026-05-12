@@ -27,17 +27,31 @@ async function resolveProjectId(apiKey) {
 }
 
 /**
+ * Check if credentials indicate ADC (Application Default Credentials) mode.
+ * ADC is used when:
+ *  1. providerSpecificData.useAdc is explicitly true, OR
+ *  2. No API key / SA JSON is provided but projectId exists
+ *     (legacy vertex-adc connections migrated to vertex provider)
+ */
+function isAdcMode(credentials) {
+  if (credentials?.providerSpecificData?.useAdc) return true;
+  // Auto-detect: no apiKey but has projectId → assume ADC on GCE VM
+  if (!credentials?.apiKey && credentials?.providerSpecificData?.projectId) return true;
+  return false;
+}
+
+/**
  * VertexExecutor - Google Cloud Vertex AI
  *
  * "vertex"         → Gemini models via regional/global Vertex endpoint
  * "vertex-partner" → Partner models (Llama, Mistral, GLM, DeepSeek, Qwen)
  *                    via global OpenAI-compatible endpoint
- * "vertex-adc"     → Gemini models via GCE Metadata Server ADC
- *                    For GCP VMs with bound service accounts.
- *                    projectId + location from providerSpecificData.
  *
- * Auth: SA JSON (stored as apiKey) → JWT assertion → Bearer token (via jose)
- *       ADC (vertex-adc)           → GCE Metadata Server → Bearer token
+ * Auth modes:
+ *   SA JSON (stored as apiKey) → JWT assertion → Bearer token (via jose)
+ *   ADC (useAdc: true)         → GCE Metadata Server → Bearer token
+ *   Raw API key                → URL ?key= parameter
+ *
  * Token is minted/cached in tokenRefresh.js, not here.
  */
 export class VertexExecutor extends BaseExecutor {
@@ -50,17 +64,13 @@ export class VertexExecutor extends BaseExecutor {
     const rawKey = !saJson ? credentials?.apiKey : null;
     const projectId = saJson?.project_id || credentials?.providerSpecificData?.projectId;
 
-    // vertex-adc: use global endpoint for Preview models, regional for GA
-    if (this.provider === "vertex-adc") {
+    // ADC mode: use project-scoped endpoint (same as SA JSON flow)
+    if (isAdcMode(credentials)) {
       const adcProjectId = credentials?.providerSpecificData?.projectId;
       const adcLocation = credentials?.providerSpecificData?.location || "us-central1";
       if (!adcProjectId) throw new Error("Vertex ADC requires projectId in providerSpecificData.");
       const action = stream ? "streamGenerateContent" : "generateContent";
-      // Preview models use global endpoint; GA models use regional
-      const isPreview = model.includes("preview");
-      const host = isPreview ? "aiplatform.googleapis.com" : `${adcLocation}-aiplatform.googleapis.com`;
-      const loc = isPreview ? "global" : adcLocation;
-      let url = `https://${host}/v1/projects/${adcProjectId}/locations/${loc}/publishers/google/models/${model}:${action}`;
+      let url = `https://aiplatform.googleapis.com/v1/projects/${adcProjectId}/locations/${adcLocation}/publishers/google/models/${model}:${action}`;
       if (stream) url += "?alt=sse";
       return url;
     }
@@ -77,12 +87,8 @@ export class VertexExecutor extends BaseExecutor {
 
     if (saJson) {
       // SA JSON + Bearer token: must use project-scoped path to avoid RESOURCE_PROJECT_INVALID
-      // Preview models use global endpoint; GA models use regional
       const location = credentials?.providerSpecificData?.location || "us-central1";
-      const isPreview = model.includes("preview");
-      const host = isPreview ? "aiplatform.googleapis.com" : `${location}-aiplatform.googleapis.com`;
-      const loc = isPreview ? "global" : location;
-      let url = `https://${host}/v1/projects/${projectId}/locations/${loc}/publishers/google/models/${model}:${action}`;
+      let url = `https://aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${model}:${action}`;
       if (stream) url += "?alt=sse";
       return url;
     }
@@ -109,8 +115,8 @@ export class VertexExecutor extends BaseExecutor {
   }
 
   async refreshCredentials(credentials, log) {
-    // vertex-adc: refresh via GCE Metadata Server
-    if (this.provider === "vertex-adc") {
+    // ADC fallback: detect GCE environment and use Metadata Server
+    if (isAdcMode(credentials)) {
       const result = await refreshVertexAdcToken(log);
       if (!result) return null;
       return { accessToken: result.accessToken, expiresAt: result.expiresAt };
@@ -126,8 +132,8 @@ export class VertexExecutor extends BaseExecutor {
   }
 
   async execute({ model, body, stream, credentials, signal, log, proxyOptions = null }) {
-    // vertex-adc: fetch token from GCE Metadata Server
-    if (this.provider === "vertex-adc") {
+    // ADC mode: fetch token from GCE Metadata Server
+    if (isAdcMode(credentials)) {
       const result = await refreshVertexAdcToken(log);
       if (!result?.accessToken) throw new Error("Vertex ADC: failed to obtain token from GCE Metadata Server");
       credentials.accessToken = result.accessToken;
