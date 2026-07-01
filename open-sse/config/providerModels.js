@@ -543,6 +543,7 @@ export const PROVIDER_MODELS = {
     { id: "qwen3.5", name: "Qwen3.5" },
   ],
   vertex: [
+    { id: "gemini-3.5-flash", name: "Gemini 3.5 Flash" },
     { id: "gemini-3.1-pro-preview", name: "Gemini 3.1 Pro Preview" },
     { id: "gemini-3.1-flash-lite-preview", name: "Gemini 3.1 Flash Lite Preview" },
     { id: "gemini-3-flash-preview", name: "Gemini 3 Flash Preview" },
@@ -559,10 +560,12 @@ export const PROVIDER_MODELS = {
   ],
   // Vertex AI ADC - GCE Metadata Server auth (all probe-tested models)
   "vertex-adc": [
-    // Preview models (global endpoint)
+    // Preview models (global endpoint - auto-detected by "preview" in name)
     { id: "gemini-3.1-pro-preview", name: "Gemini 3.1 Pro Preview (ADC)" },
     { id: "gemini-3.1-flash-lite-preview", name: "Gemini 3.1 Flash Lite Preview (ADC)" },
     { id: "gemini-3-flash-preview", name: "Gemini 3 Flash Preview (ADC)" },
+    // GA models requiring global endpoint (listed in GLOBAL_ENDPOINT_MODELS)
+    { id: "gemini-3.5-flash", name: "Gemini 3.5 Flash (ADC)" },
     // GA models (regional endpoint)
     { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro (ADC)" },
     { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash (ADC)" },

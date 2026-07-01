@@ -6,6 +6,12 @@ import { proxyAwareFetch } from "../utils/proxyFetch.js";
 // Cache project IDs resolved from raw API keys { apiKey → projectId }
 const projectIdCache = new Map();
 
+// Models that must use the global endpoint (not regional)
+// Preview models are auto-detected via model.includes("preview")
+const GLOBAL_ENDPOINT_MODELS = new Set([
+  "gemini-3.5-flash",
+]);
+
 /**
  * Resolve GCP project ID from a raw Vertex API key.
  * Sends a dummy 404 request and parses "projects/{id}" from the error message.
@@ -67,8 +73,14 @@ export class VertexExecutor extends BaseExecutor {
     // ADC mode: use project-scoped endpoint (same as SA JSON flow)
     if (isAdcMode(credentials)) {
       const adcProjectId = credentials?.providerSpecificData?.projectId;
-      const adcLocation = credentials?.providerSpecificData?.location || "us-central1";
+      let adcLocation = credentials?.providerSpecificData?.location || "us-central1";
       if (!adcProjectId) throw new Error("Vertex ADC requires projectId in providerSpecificData.");
+
+      // Force global endpoint for preview models and models that require it
+      if (model.includes("preview") || GLOBAL_ENDPOINT_MODELS.has(model)) {
+        adcLocation = "global";
+      }
+
       const action = stream ? "streamGenerateContent" : "generateContent";
       let url = `https://aiplatform.googleapis.com/v1/projects/${adcProjectId}/locations/${adcLocation}/publishers/google/models/${model}:${action}`;
       if (stream) url += "?alt=sse";
