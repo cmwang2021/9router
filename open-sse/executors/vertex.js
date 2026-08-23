@@ -9,6 +9,8 @@ const projectIdCache = new Map();
 // Models that must use the global endpoint (not regional)
 // Preview models are auto-detected via model.includes("preview")
 const GLOBAL_ENDPOINT_MODELS = new Set([
+  "gemini-3.7-flash",
+  "gemini-3.6-flash",
   "gemini-3.5-flash",
 ]);
 
@@ -39,7 +41,8 @@ async function resolveProjectId(apiKey) {
  *  2. No API key / SA JSON is provided but projectId exists
  *     (legacy vertex-adc connections migrated to vertex provider)
  */
-function isAdcMode(credentials) {
+function isAdcMode(credentials, provider) {
+  if (provider === "vertex-adc" || credentials?.provider === "vertex-adc") return true;
   if (credentials?.providerSpecificData?.useAdc) return true;
   // Auto-detect: no apiKey but has projectId → assume ADC on GCE VM
   if (!credentials?.apiKey && credentials?.providerSpecificData?.projectId) return true;
@@ -71,7 +74,7 @@ export class VertexExecutor extends BaseExecutor {
     const projectId = saJson?.project_id || credentials?.providerSpecificData?.projectId;
 
     // ADC mode: use project-scoped endpoint (same as SA JSON flow)
-    if (isAdcMode(credentials)) {
+    if (isAdcMode(credentials, this.provider)) {
       const adcProjectId = credentials?.providerSpecificData?.projectId;
       let adcLocation = credentials?.providerSpecificData?.location || "us-central1";
       if (!adcProjectId) throw new Error("Vertex ADC requires projectId in providerSpecificData.");
@@ -128,7 +131,7 @@ export class VertexExecutor extends BaseExecutor {
 
   async refreshCredentials(credentials, log) {
     // ADC fallback: detect GCE environment and use Metadata Server
-    if (isAdcMode(credentials)) {
+    if (isAdcMode(credentials, this.provider)) {
       const result = await refreshVertexAdcToken(log);
       if (!result) return null;
       return { accessToken: result.accessToken, expiresAt: result.expiresAt };
@@ -145,7 +148,7 @@ export class VertexExecutor extends BaseExecutor {
 
   async execute({ model, body, stream, credentials, signal, log, proxyOptions = null }) {
     // ADC mode: fetch token from GCE Metadata Server
-    if (isAdcMode(credentials)) {
+    if (isAdcMode(credentials, this.provider)) {
       const result = await refreshVertexAdcToken(log);
       if (!result?.accessToken) throw new Error("Vertex ADC: failed to obtain token from GCE Metadata Server");
       credentials.accessToken = result.accessToken;

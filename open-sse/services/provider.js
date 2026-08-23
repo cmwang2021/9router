@@ -301,6 +301,7 @@ export function buildProviderHeaders(provider, credentials, stream = true, body 
 
       case "vertex":
       case "vertex-partner":
+      case "vertex-adc":
         // Vertex uses async token minting — headers are set by VertexExecutor._buildHeadersAsync()
         // Do NOT set Authorization here; it would leak the raw SA JSON as Bearer token
         break;
